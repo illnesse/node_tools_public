@@ -1,0 +1,119 @@
+#!/usr/bin/env bash
+
+function _ws() {
+  HIPRIODST=()
+  COMMONOPTIONS=()
+  NOPRIOHOSTSRC=(80);
+  NOPRIOHOSTDST=();
+  NOPRIOPORTSRC=();
+  NOPRIOPORTDST=();
+
+  QUANTUM="6000"
+  VERSION="1.4.1"
+  DSPEED=""
+  USPEED=""
+  IFACE=""
+  IFB="ifb0"
+  MODE=""
+
+  local OPTIND o
+  while getopts d:u:a:pcs o; do
+      case "$o" in
+          d) DSPEED="$OPTARG" ;;
+          u) USPEED="$OPTARG" ;;
+          a) IFACE="$OPTARG" ;;
+          p) MODE="presets" ;;
+          c) MODE="clear" ;;
+          s) MODE="status" ;;
+      esac
+  done
+  shift $((OPTIND-1))
+
+  if [[ -n "$MODE" ]] && [[ -z "$IFACE" ]]; then
+      echo "Please supply the adapter name for the mode."
+      echo ""
+      usage
+      return 1
+  fi
+
+  if [ "$MODE" = "status" ]; then
+      tc -s qdisc ls dev "$IFACE"
+      tc -s class ls dev "$IFACE"
+      return
+  fi
+
+  if [ "$MODE" = "clear" ]; then
+      tc qdisc del dev "$IFACE" root 2> /dev/null > /dev/null
+      tc qdisc del dev "$IFACE" ingress 2> /dev/null > /dev/null
+      tc qdisc del dev "$IFB" root 2> /dev/null > /dev/null
+      tc qdisc del dev "$IFB" ingress 2> /dev/null > /dev/null
+      return
+  fi
+
+  tc qdisc add dev "$IFACE" root handle 1: htb default 20
+
+  if [[ -n "$USPEED" ]]; then
+      tc class add dev "$IFACE" parent 1: classid 1:1 htb \
+          rate "${USPEED}kbit" \
+          prio 5 ${COMMONOPTIONS[@]}
+
+      RATE=$((20 * USPEED / 100))
+      if [ "$RATE" -eq 0 ]; then RATE=1; fi
+      tc class add dev "$IFACE" parent 1:1 classid 1:10 htb \
+          rate "${RATE}kbit" ceil $((95 * USPEED / 100))kbit \
+          prio 1 ${COMMONOPTIONS[@]}
+
+      RATE=$((40 * USPEED / 100))
+      if [ "$RATE" -eq 0 ]; then RATE=1; fi
+      tc class add dev "$IFACE" parent 1:1 classid 1:20 htb \
+          rate "${USPEED}kbit" ceil $((95 * USPEED / 100))kbit \
+          prio 2 ${COMMONOPTIONS[@]}
+
+      RATE=$((20 * USPEED / 100))
+      if [ "$RATE" -eq 0 ]; then RATE=1; fi
+      tc class add dev "$IFACE" parent 1:1 classid 1:30 htb \
+          rate "${USPEED}kbit" ceil $((90 * USPEED / 100))kbit \
+          prio 3 ${COMMONOPTIONS[@]}
+
+      tc qdisc add dev "$IFACE" parent 1:10 handle 10: sfq perturb 10 quantum "$QUANTUM"
+      tc qdisc add dev "$IFACE" parent 1:20 handle 20: sfq perturb 10 quantum "$QUANTUM"
+      tc qdisc add dev "$IFACE" parent 1:30 handle 30: sfq perturb 10 quantum "$QUANTUM"
+      tc filter add dev "$IFACE" parent 1: protocol ip prio 18 u32 \
+          match ip dst 0.0.0.0/0 flowid 1:20
+  fi
+}
+
+  TTX=0
+  LIMIT=0
+  IFACE=$(/usr/bin/sudo ip route | grep default | sed -e "s/^.*dev.//" -e "s/.proto.*//" | awk '{print $1}')
+
+  vnstat -u
+  TOTALSTX=$(vnstat --dumpdb -i $IFACE | grep 'totaltx;' | cut -d';' -f2)
+  for TOTALTX in $TOTALSTX; do (('TTX += TOTALTX')); done;
+
+  HOSTNAME=$(hostname -s)
+  VMID=${HOSTNAME//ct/}
+  TIME=$(date +%s);
+  URL="https://my.dev.seedit4.me/api/vmtinfo/${VMID}/${TTX}/${TIME}"
+
+  echo 'IFACE' $IFACE;
+  echo 'TTX' $TTX
+  echo 'VMID' $VMID
+  echo 'URL' $URL
+
+  LIMIT=$(curl -s -w "\n%{http_code}" "${URL}" | {
+      read -r body
+      echo $body
+  })
+
+  echo 'LIMIT' $LIMIT
+
+  if [ $LIMIT == 'true' ]; then
+      _ws -c -a $IFACE
+      _ws -a $IFACE -u 100000
+      _ws -s -a $IFACE
+  fi
+
+  if [ $LIMIT == 'false' ]; then
+      _ws -c -a $IFACE
+  fi
