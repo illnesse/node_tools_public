@@ -94,7 +94,7 @@ function _ws() {
   HOSTNAME=$(hostname -s)
   VMID=${HOSTNAME//ct/}
   TIME=$(date +%s);
-  URL="https://my.seedit4.me/api/vmtinfo/${VMID}/${TTX}/${TIME}"
+  URL="https://my.dev.seedit4.me/api/vmtinfo/${VMID}/${TTX}/${TIME}"
 
   echo 'IFACE' $IFACE;
   echo 'TTX' $TTX
