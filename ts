@@ -96,24 +96,16 @@ function _ws() {
   TIME=$(date +%s);
   URL="https://my.seedit4.me/api/vmtinfo/${VMID}/${TTX}/${TIME}"
 
-  echo 'IFACE' $IFACE;
-  echo 'TTX' $TTX
-  echo 'VMID' $VMID
-  echo 'URL' $URL
-
   LIMIT=$(curl -s -w "\n%{http_code}" "${URL}" | {
       read -r body
       echo $body
   })
 
-  echo 'LIMIT' $LIMIT
-
-  if [ $LIMIT == 'true' ]; then
-      _ws -c -a $IFACE
-      _ws -a $IFACE -u 100000
-      _ws -s -a $IFACE
-  fi
-
-  if [ $LIMIT == 'false' ]; then
-      _ws -c -a $IFACE
+  re='^[0-9]+$'
+  if [[ $LIMIT =~ $re ]] ; then
+    _ws -c -a $IFACE
+    _ws -a $IFACE -u $LIMIT
+    _ws -s -a $IFACE
+  else
+    _ws -c -a $IFACE
   fi
