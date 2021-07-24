@@ -83,8 +83,6 @@ function _ws() {
   fi
 }
 
-  sleep $[ ( $RANDOM % 90 )  + 30 ]s
-
   TTX=0
   LIMIT=0
   IFACE=$(/usr/bin/sudo ip route | grep default | sed -e "s/^.*dev.//" -e "s/.proto.*//" | awk '{print $1}')
